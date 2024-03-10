@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <unistd.h>
 #include <fstream>
 #include <iostream>
 #include <ncurses.h>
@@ -21,7 +22,7 @@ namespace fs = std::filesystem;
 #define SELECTED_FOLDER 8
 #define SELECTED_EXEC 9
 
-#define MAXSIZEPARENT 35
+#define MAXSIZEPARENT 25
 
 struct file {
 	string fullName;
@@ -30,6 +31,14 @@ struct file {
 	fs::perms perm;
 	uintmax_t size;
 };
+
+int biggestName(vector<file> &file){
+	int max = 0;
+	for (auto entry : file)
+		if (entry.name.length() > max)
+			max = entry.name.length();
+	return max;
+}
 
 string permToString(fs::perms p) {
 	string result;
@@ -73,33 +82,39 @@ void getFolderFiles(vector<file> &files, string directory) {
 	}
 }
 
-void printContent(file &content, int selected){
+void printContent(file &content, int selected, int current){
+	if (current){
+		string perm = permToString(content.perm);
+		printw("| %s ", perm.c_str());
+	} else
+		printw("|| ");
+
 	if (!selected){
 		if (content.type == FOLDER){
 			attron(COLOR_PAIR(TYPE_FOLDER));
-			printw("| %s ", content.name.c_str());
+			printw("%s ", content.name.c_str());
 			attroff(COLOR_PAIR(TYPE_FOLDER));
 		} else if ((content.perm & fs::perms::owner_exec) != fs::perms::none){
 			attron(COLOR_PAIR(TYPE_EXEC));
-			printw("| %s ", content.name.c_str());
+			printw("%s ", content.name.c_str());
 			attroff(COLOR_PAIR(TYPE_EXEC));
 		} else if (content.type == FILE){
 			attron(COLOR_PAIR(TYPE_FILE));
-			printw("| %s ", content.name.c_str());
+			printw("%s ", content.name.c_str());
 			attroff(COLOR_PAIR(TYPE_FILE));
 		}
 	}else {
 		if (content.type == FOLDER){
 			attron(COLOR_PAIR(SELECTED_FOLDER));
-			printw("| %s ", content.name.c_str());
+			printw("%s ", content.name.c_str());
 			attroff(COLOR_PAIR(SELECTED_FOLDER));
 		} else if ((content.perm & fs::perms::owner_exec) != fs::perms::none){
 			attron(COLOR_PAIR(SELECTED_EXEC));
-			printw("| %s ", content.name.c_str());
+			printw("%s ", content.name.c_str());
 			attroff(COLOR_PAIR(SELECTED_EXEC));
 		} else if (content.type == FILE){
 			attron(COLOR_PAIR(SELECTED_FILE));
-			printw("| %s ", content.name.c_str());
+			printw("%s ", content.name.c_str());
 			attroff(COLOR_PAIR(SELECTED_FILE));
 		}
 	}
@@ -120,21 +135,23 @@ void print(vector<file> &files, vector<file> &parentFiles, int &cursor, int rows
 		rangeend++;
 	}
 
+	int max = biggestName(files) + 3 + 13 + MAXSIZEPARENT;
+	printw("%s\n", string(max, '-').c_str());
 	int indexParent = 0;
 	for (int index = rangestart; index <= rangeend; index++){
 		if (indexParent < parentFilesSize){
 			if (parentFiles[indexParent].name.length() < MAXSIZEPARENT)
 				parentFiles[indexParent].name += string(MAXSIZEPARENT - parentFiles[index].name.length(), ' ');
 			if (fs::current_path().string() == parentFiles[indexParent].fullName)
-				printContent(parentFiles[indexParent], 1);
+				printContent(parentFiles[indexParent], 1, 0);
 			else
-				printContent(parentFiles[indexParent], 0);
+				printContent(parentFiles[indexParent], 0, 0);
 		} else
-			printw("%s", string(MAXSIZEPARENT + 3, ' ').c_str());
+			printw("%s", string(MAXSIZEPARENT + 4, ' ').c_str());
 		indexParent++;
 
 		if (index < filesSize)
-			printContent(files[index], index==cursor);
+			printContent(files[index], index==cursor, 1);
 		printw("\n");
 
 	}
@@ -188,17 +205,15 @@ int main() {
 				cursor = 0;
 			}
 		} else if (ch == KEY_BACKSPACE or ch == '\b' or ch == 'h' or ch == 127){
-			if (fs::current_path().parent_path().string() != "/"){
-				string oldPath = fs::current_path().string();
-				fs::current_path(fs::current_path().parent_path().string());
-				getFolderFiles(files, fs::current_path().string());
-				getFolderFiles(parentFiles, fs::current_path().parent_path().string());
-				int index = 0;
-				for (int index = 0; index < files.size(); index++){
-					if (files[index].fullName == oldPath)
-						break;
-				cursor = index+1;
-				}
+			string oldPath = fs::current_path().string();
+			fs::current_path(fs::current_path().parent_path());
+			getFolderFiles(files, fs::current_path().string());
+			getFolderFiles(parentFiles, fs::current_path().parent_path().string());
+			int index = 0;
+			for (index = 0; index < files.size(); index++){
+				if (files[index].fullName == oldPath)
+					break;
+			cursor = index+1;
 			}
 		}
 		clear(); // Clear the screen
@@ -210,6 +225,7 @@ int main() {
 		outputFile << fs::current_path().string();
 		outputFile.close();
 	}
+
 	endwin(); // Clean up ncurses
 
 	return 0;
