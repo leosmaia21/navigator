@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <ncurses.h>
 #include <string>
@@ -23,6 +24,7 @@ namespace fs = std::filesystem;
 #define MAXSIZEPARENT 35
 
 struct file {
+	string fullName;
 	string name;
 	int type;
 	fs::perms perm;
@@ -62,11 +64,11 @@ void getFolderFiles(vector<file> &files, string directory) {
 	files.clear();
 	for (const auto &entry : fs::directory_iterator(directory)) {
 		if (fs::is_regular_file(entry.path())) {
-			files.emplace_back(file{getTheLast(entry.path().string()), FILE, fs::status(entry.path()).permissions(), fs::file_size(entry.path())});
+			files.emplace_back(file{entry.path().string(), getTheLast(entry.path().string()), FILE, fs::status(entry.path()).permissions(), fs::file_size(entry.path())});
 		} else if (fs::is_directory(entry.path())) {
-			files.emplace_back(file{getTheLast(entry.path().string()), FOLDER, fs::status(entry.path()).permissions(), 0});
+			files.emplace_back(file{entry.path().string(), getTheLast(entry.path().string()), FOLDER, fs::status(entry.path()).permissions(), 0});
 		} else {
-			files.emplace_back(file{getTheLast(entry.path().string()), OTHER, fs::status(entry.path()).permissions(), 0});
+			files.emplace_back(file{entry.path().string(), getTheLast(entry.path().string()), OTHER, fs::status(entry.path()).permissions(), 0});
 		}
 	}
 }
@@ -105,24 +107,36 @@ void printContent(file &content, int selected){
 
 int rangestart = 0;
 int rangeend = 0;
-void printline(vector<file> &files, int selected, vector<file> &parentFiles, int &cursor, int colums){
+void print(vector<file> &files, vector<file> &parentFiles, int &cursor, int rows){
 	string line;
 	int parentFilesSize = parentFiles.size();
 	int filesSize = files.size();
 
-	for (int index = 0; index < colums; index++){
-		if (index < parentFilesSize){
-			if (parentFiles[index].name.length() < MAXSIZEPARENT)
-				parentFiles[index].name += string(MAXSIZEPARENT - parentFiles[index].name.length(), ' ');
-			printContent(parentFiles[index], 0);
+	if (cursor < rangestart){
+		rangestart--;
+		rangeend--;
+	}else if (cursor > rangeend){
+		rangestart++;
+		rangeend++;
+	}
+
+	int indexParent = 0;
+	for (int index = rangestart; index <= rangeend; index++){
+		if (indexParent < parentFilesSize){
+			if (parentFiles[indexParent].name.length() < MAXSIZEPARENT)
+				parentFiles[indexParent].name += string(MAXSIZEPARENT - parentFiles[index].name.length(), ' ');
+			if (fs::current_path().string() == parentFiles[indexParent].fullName)
+				printContent(parentFiles[indexParent], 1);
+			else
+				printContent(parentFiles[indexParent], 0);
 		} else
 			printw("%s", string(MAXSIZEPARENT + 3, ' ').c_str());
+		indexParent++;
 
-		if (index < filesSize){
-			if (index >= rangestart and index <= rangeend)
-				printContent(files[index], index==cursor);
-		}
+		if (index < filesSize)
+			printContent(files[index], index==cursor);
 		printw("\n");
+
 	}
 }
 
@@ -149,33 +163,53 @@ int main() {
 	int cursor = 0;
 	int rows, cols;
 	getmaxyx(stdscr, rows, cols);
+	rows--;
 
-	rangeend = cols;
+	rangeend = rows;
 
 	getFolderFiles(files, fs::current_path().string());
 	getFolderFiles(parentFiles, fs::current_path().parent_path().string());
 
-	printline(files, 0, parentFiles, cursor, cols);
+	clear(); // Clear the screen
+	print(files, parentFiles, cursor, cols);
 	int ch;
 	while ((ch = getch()) != 'q') {
 		if (ch == KEY_RESIZE)
 			continue;
-		clear(); // Clear the screen
 		if (ch == 'j' && cursor < files.size() - 1)
 			cursor++;
 		else if (ch == 'k' && cursor > 0)
 			cursor--;
-		printline(files, 0, parentFiles, cursor, cols);
-		// if (ch == KEY_RESIZE) {
-		// 	clear(); // Clear the screen
-		// 	getmaxyx(stdscr, rows, cols);
-		// 	// printw("cwd %s\n", files[0].c_str());
-		// 	printw("Terminal Width: %d, Height: %d", cols, rows);
-		// 	printw("Terminal has been resized. Press 'q' to exit.\n");
-		// refresh(); // Refresh the screen after resizing
-		// }
+		else if (ch == KEY_ENTER or ch == '\n' or ch == 'l'){
+			if (fs::is_directory(files[cursor].fullName)){
+				fs::current_path(files[cursor].fullName);
+				getFolderFiles(files, fs::current_path().string());
+				getFolderFiles(parentFiles, fs::current_path().parent_path().string());
+				cursor = 0;
+			}
+		} else if (ch == KEY_BACKSPACE or ch == '\b' or ch == 'h' or ch == 127){
+			if (fs::current_path().parent_path().string() != "/"){
+				string oldPath = fs::current_path().string();
+				fs::current_path(fs::current_path().parent_path().string());
+				getFolderFiles(files, fs::current_path().string());
+				getFolderFiles(parentFiles, fs::current_path().parent_path().string());
+				int index = 0;
+				for (int index = 0; index < files.size(); index++){
+					if (files[index].fullName == oldPath)
+						break;
+				cursor = index+1;
+				}
+			}
+		}
+		clear(); // Clear the screen
+		print(files, parentFiles, cursor, rows);
 	}
 
+	ofstream outputFile("/tmp/.directorytmp", ios::trunc);
+	if (outputFile.is_open()) {
+		outputFile << fs::current_path().string();
+		outputFile.close();
+	}
 	endwin(); // Clean up ncurses
 
 	return 0;

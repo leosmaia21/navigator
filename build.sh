@@ -1,1 +1,1 @@
-g++ -O3 main.cpp -o navigator -lncurses && ./navigator
+g++  -O3 main.cpp -o navigator -lncurses && ./navigator
