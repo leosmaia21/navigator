@@ -157,7 +157,7 @@ void print(vector<file> &files, vector<file> &parentFiles, int &cursor, int rows
 	}
 }
 
-int main() {
+int main(int argc, char **argv) {
 	initscr(); // Initialize ncurses
 	raw();     // Disable line buffering
 	keypad(stdscr, TRUE); // Enable special keys
@@ -220,7 +220,11 @@ int main() {
 		print(files, parentFiles, cursor, rows);
 	}
 
-	ofstream outputFile("/tmp/.directorytmp", ios::trunc);
+	ofstream outputFile;
+	if (argc==1)
+		outputFile = ofstream("/tmp/.directorytmpnavigator", ios::trunc);
+	else
+		outputFile = ofstream(argv[1], ios::trunc);
 	if (outputFile.is_open()) {
 		outputFile << fs::current_path().string();
 		outputFile.close();

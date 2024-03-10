@@ -1,4 +1,4 @@
-file_path="/tmp/.directorytmp"
+file_path="/tmp/.directorytmpnavigator"
 
 ./navigator
 if test -e "$file_path"; then
